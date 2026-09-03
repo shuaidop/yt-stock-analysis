@@ -63,7 +63,10 @@ from context (e.g. 'in video' -> NVDA) but flag genuinely ambiguous cases in ris
 - risk_flags should name concrete concerns: sponsorship, affiliate pushes, unverifiable \
 'insider' claims, extreme leverage suggestions, or a pattern of prior wrong calls the \
 speaker acknowledges.
-- Be concise. Summary in 3-5 sentences; rationales one sentence each."""
+- Be concise. Summary in 3-5 sentences; rationales one sentence each.
+- The transcript may be in any language (Chinese-language finance channels are common). \
+Write every output field in {language}; keep tickers as exchange symbols and translate \
+company names to their common English form."""
 
 SYNTHESIS_SYSTEM_PROMPT = """You are a buy-side research analyst compiling a daily digest of \
 what popular finance YouTubers said about the stock market. You receive one structured \
@@ -77,7 +80,8 @@ Guidelines
 video is low quality.
 - predictions_to_track must be specific and checkable (ticker/instrument, direction or \
 level, horizon, source channel).
-- Keep the narrative tight: two paragraphs at most."""
+- Keep the narrative tight: two paragraphs at most.
+- Write in {language}."""
 
 
 @dataclass
@@ -212,6 +216,13 @@ class ClaudeAnalyzer:
     def __init__(self, settings: Settings, client: Any | None = None) -> None:
         self._settings = settings
         self._client = client if client is not None else build_llm_client(settings)
+        lang = settings.report_language
+        self._prompts = {
+            "video": VIDEO_SYSTEM_PROMPT.format(language=lang),
+            "synthesis": SYNTHESIS_SYSTEM_PROMPT.format(language=lang),
+            "factcheck": FACTCHECK_SYSTEM_PROMPT.format(language=lang),
+            "brief": BRIEF_SYSTEM_PROMPT.format(language=lang),
+        }
 
     # ------------------------------------------------------------------ #
     def _parse(self, *, system: str, user: str, output_format: type, effort: str) -> Any:
@@ -267,7 +278,7 @@ class ClaudeAnalyzer:
             )
         try:
             response = self._parse(
-                system=VIDEO_SYSTEM_PROMPT,
+                system=self._prompts["video"],
                 user=self.build_video_prompt(video, transcript),
                 output_format=VideoAnalysis,
                 effort=s.claude_video_effort,
@@ -338,7 +349,7 @@ class ClaudeAnalyzer:
         s = self._settings
         try:
             response = self._parse(
-                system=SYNTHESIS_SYSTEM_PROMPT,
+                system=self._prompts["synthesis"],
                 user=self.build_synthesis_prompt(target_date, videos, analyses, stats),
                 output_format=DailySynthesis,
                 effort=s.claude_synthesis_effort,
@@ -391,7 +402,8 @@ predictions whose date has not passed.
 - Judge claims as of the video's publication date, but add anything that changed since in \
 new_context (e.g. a data release or price move after recording).
 - Never invent sources. List only URLs you actually retrieved.
-- Be specific and quantitative in evidence. Keep every field concise."""
+- Be specific and quantitative in evidence. Keep every field concise.
+- Write in {language}. Sources may be in any language."""
 
 BRIEF_SYSTEM_PROMPT = """You are a senior cross-asset strategist writing a trading brief for a \
 discretionary trader with a horizon of the next few days to a few weeks. Your inputs are: \
@@ -414,7 +426,8 @@ or a search result.
 - Watch-list items should be time-bound and specific (data release, earnings, a level to \
 break, a scheduled speaker, an options expiry).
 - Write for a professional: dense, quantitative, no filler, no generic disclaimers in the \
-body (a caveats list is provided for that)."""
+body (a caveats list is provided for that).
+- Write in {language}."""
 
 
 @dataclass
@@ -550,7 +563,7 @@ class GroundedAnalyzer(ClaudeAnalyzer):
 
     def fact_check(self, video: VideoMeta, analysis: VideoAnalysis, today: str) -> ToolOutcome:
         outcome = self._grounded(
-            system=FACTCHECK_SYSTEM_PROMPT,
+            system=self._prompts["factcheck"],
             user=self.build_factcheck_prompt(video, analysis, today),
             output_format=FactCheckReport,
             effort=self._settings.claude_factcheck_effort,
@@ -611,7 +624,7 @@ class GroundedAnalyzer(ClaudeAnalyzer):
         stats: list[TickerStats],
     ) -> ToolOutcome:
         outcome = self._grounded(
-            system=BRIEF_SYSTEM_PROMPT,
+            system=self._prompts["brief"],
             user=self.build_brief_prompt(today, videos, analyses, fact_checks, stats),
             output_format=TradingBrief,
             effort=self._settings.claude_brief_effort,

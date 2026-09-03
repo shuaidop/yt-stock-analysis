@@ -67,13 +67,19 @@ def test_prefers_manual_captions():
     assert r.text == "hello world" and r.source == "youtube_captions" and not r.is_generated
 
 
-def test_falls_back_to_generated_then_translated():
+def test_falls_back_to_generated_then_native_language():
     p = CaptionProvider(["en"], api=_Api(_TranscriptList(generated=_Track(generated=True))))
     assert p.fetch("v").is_generated
 
-    p = CaptionProvider(["en"], api=_Api(_TranscriptList(others=[_Track(code="es")])))
+    p = CaptionProvider(
+        ["en"],
+        api=_Api(
+            _TranscriptList(others=[_Track(code="es", generated=True), _Track(code="zh-Hans")])
+        ),
+    )
     r = p.fetch("v")
-    assert r.source == "youtube_captions_translated" and r.language == "es->en"
+    assert r.source == "youtube_captions" and r.language == "zh-Hans"  # manual beats generated
+    assert r.text == "hello world" and not r.is_generated
 
 
 def test_unavailable_and_transient_mapping():

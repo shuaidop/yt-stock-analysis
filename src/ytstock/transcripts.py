@@ -100,17 +100,17 @@ class CaptionProvider:
                 is_generated=generated,
             )
 
-        # 3) anything translatable -> English
-        for track in transcript_list:
-            if track.is_translatable:
-                translated = track.translate("en")
-                return TranscriptResult(
-                    video_id=video_id,
-                    text=_join_snippets(self._safe_fetch(translated)),
-                    language=f"{track.language_code}->en",
-                    source="youtube_captions_translated",
-                    is_generated=track.is_generated,
-                )
+        # 3) any other language, untranslated: the analysis model reads it natively and
+        #    YouTube's machine translation would only lose information.
+        tracks = sorted(transcript_list, key=lambda t: t.is_generated)  # manual first
+        for track in tracks:
+            return TranscriptResult(
+                video_id=video_id,
+                text=_join_snippets(self._safe_fetch(track)),
+                language=track.language_code,
+                source="youtube_captions",
+                is_generated=track.is_generated,
+            )
         raise TranscriptUnavailable("NoTranscriptFound")
 
     @staticmethod
@@ -124,16 +124,17 @@ class CaptionProvider:
 class WhisperProvider:
     """yt-dlp + faster-whisper. Heavy; only used when explicitly enabled."""
 
-    def __init__(self, model_name: str = "base.en", proxy_url: str = "") -> None:
+    def __init__(self, model_name: str = "small", proxy_url: str = "", beam_size: int = 1) -> None:
         self._model_name = model_name
         self._proxy_url = proxy_url
+        self._beam_size = beam_size
         self._model = None
 
     def _load(self):
         if self._model is None:
             from faster_whisper import WhisperModel  # lazy: optional extra
 
-            self._model = WhisperModel(self._model_name, compute_type="int8")
+            self._model = WhisperModel(self._model_name, compute_type="int8", cpu_threads=8)
         return self._model
 
     def fetch(self, video_id: str) -> TranscriptResult:
@@ -157,8 +158,17 @@ class WhisperProvider:
             audio = next(Path(tmp).glob(f"{video_id}.*"), None)
             if audio is None:
                 raise TranscriptUnavailable("yt-dlp produced no audio file")
-            segments, info = self._load().transcribe(str(audio), vad_filter=True)
+            log.info("whisper.start", video_id=video_id, model=self._model_name)
+            segments, info = self._load().transcribe(
+                str(audio), vad_filter=True, beam_size=self._beam_size
+            )
             text = " ".join(seg.text.strip() for seg in segments)
+            log.info(
+                "whisper.done",
+                video_id=video_id,
+                language=getattr(info, "language", None),
+                chars=len(text),
+            )
         if not text.strip():
             raise TranscriptUnavailable("whisper produced empty transcript")
         return TranscriptResult(
@@ -184,7 +194,11 @@ class TranscriptService:
             CaptionProvider(settings.transcript_languages, build_proxy_config(settings))
         ]
         if settings.whisper_fallback:
-            providers.append(WhisperProvider(settings.whisper_model, settings.yt_proxy_url))
+            providers.append(
+                WhisperProvider(
+                    settings.whisper_model, settings.yt_proxy_url, settings.whisper_beam_size
+                )
+            )
         return cls(providers)
 
     def fetch(self, video_id: str) -> TranscriptResult:

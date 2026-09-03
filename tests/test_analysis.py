@@ -74,6 +74,7 @@ def test_analyze_video_happy_path(settings, video, fake_client):
     assert req["output_config"] == {"effort": settings.claude_video_effort}
     assert req["betas"] == [FALLBACK_BETA] and req["fallbacks"] == "default"
     assert req["system"][0]["cache_control"] == {"type": "ephemeral"}
+    assert "Write every output field in English" in req["system"][0]["text"]
     assert "<transcript>" in req["messages"][0]["content"]
 
 

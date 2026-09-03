@@ -57,7 +57,12 @@ class Settings(BaseSettings):
         description="Transcribe audio with faster-whisper when captions are unavailable "
         "(requires the `whisper` extra).",
     )
-    whisper_model: str = "base.en"
+    whisper_model: str = Field(
+        default="small",
+        description="faster-whisper model; multilingual 'small' handles Chinese/English, "
+        "'large-v3-turbo' is better but slower on CPU.",
+    )
+    whisper_beam_size: int = 1
 
     # --- LLM backend -------------------------------------------------------
     llm_backend: Literal["auto", "api", "claude-cli"] = Field(
@@ -79,6 +84,11 @@ class Settings(BaseSettings):
 
     # --- Claude ------------------------------------------------------------
     claude_model: str = "claude-opus-5"
+    report_language: str = Field(
+        default="English",
+        description="Language for all model-written output (reports, briefs). Transcripts "
+        "may be in any language.",
+    )
     claude_video_effort: EffortLevel = "medium"
     claude_synthesis_effort: EffortLevel = "high"
     claude_factcheck_effort: EffortLevel = "high"
