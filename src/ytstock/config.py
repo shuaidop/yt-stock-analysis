@@ -63,6 +63,12 @@ class Settings(BaseSettings):
         "'large-v3-turbo' is better but slower on CPU.",
     )
     whisper_beam_size: int = 1
+    whisper_backend: Literal["auto", "faster", "mlx"] = Field(
+        default="auto",
+        description="'mlx' = Apple-GPU mlx-whisper (macOS arm64, `mlx` extra); 'faster' = "
+        "CPU faster-whisper; 'auto' prefers mlx when importable.",
+    )
+    whisper_mlx_model: str = "mlx-community/whisper-large-v3-turbo"
 
     # --- LLM backend -------------------------------------------------------
     llm_backend: Literal["auto", "api", "claude-cli"] = Field(

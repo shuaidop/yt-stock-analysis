@@ -92,10 +92,13 @@ def discover(
 
 
 @app.command()
-def transcribe(date_: DateOpt = None) -> None:
+def transcribe(
+    date_: DateOpt = None,
+    force: Annotated[bool, typer.Option(help="Re-fetch even if a transcript exists.")] = False,
+) -> None:
     """Fetch transcripts for stored videos lacking one."""
     settings, pipeline = _bootstrap()
-    ok, failed = pipeline.transcribe(_parse_date(date_, settings))
+    ok, failed = pipeline.transcribe(_parse_date(date_, settings), force=force)
     typer.echo(f"transcripts ok={ok} failed={failed}")
 
 

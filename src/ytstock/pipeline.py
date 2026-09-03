@@ -15,7 +15,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import select, true
 
 from ytstock.analysis import (
     BRIEF_PROMPT_VERSION,
@@ -230,7 +230,11 @@ class Pipeline:
         return found
 
     def transcribe(
-        self, target_date: date, *, video_ids: list[str] | None = None
+        self,
+        target_date: date,
+        *,
+        video_ids: list[str] | None = None,
+        force: bool = False,
     ) -> tuple[int, int]:
         """Returns (succeeded, failed) for this invocation."""
         ok = failed = 0
@@ -241,10 +245,14 @@ class Pipeline:
                     .outerjoin(Transcript)
                     .where(
                         Video.target_date == target_date,
-                        (Transcript.video_id.is_(None))
-                        | (
-                            (Transcript.status != "ok")
-                            & (Transcript.attempts < MAX_TRANSCRIPT_ATTEMPTS)
+                        true()
+                        if force
+                        else (
+                            (Transcript.video_id.is_(None))
+                            | (
+                                (Transcript.status != "ok")
+                                & (Transcript.attempts < MAX_TRANSCRIPT_ATTEMPTS)
+                            )
                         ),
                     )
                 ).all()

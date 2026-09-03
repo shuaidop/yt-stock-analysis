@@ -107,6 +107,10 @@ def test_transcript_failures_are_recorded_and_retried_sensibly(settings, db):
     md = Path(path).read_text()
     assert "_Skipped: transcript unavailable: TranscriptsDisabled_" in md
 
+    # --force re-fetches everything, including successes and exhausted failures
+    transcripts.behaviour = {}
+    assert p.transcribe(TARGET, force=True) == (2, 0)
+
 
 def test_analysis_failure_does_not_abort_day(settings, db):
     from .conftest import fake_response

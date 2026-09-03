@@ -109,3 +109,37 @@ def test_service_falls_through_providers():
 
     with pytest.raises(TranscriptUnavailable):
         TranscriptService([Bad()]).fetch("v")
+
+
+def test_mlx_provider_joins_segments(monkeypatch, tmp_path):
+    import sys
+    import types
+
+    from ytstock.transcripts import MlxWhisperProvider
+
+    fake_mlx = types.SimpleNamespace(
+        transcribe=lambda path, path_or_hf_repo: {
+            "language": "zh",
+            "segments": [{"text": " 你好 "}, {"text": "世界"}],
+            "text": "ignored",
+        }
+    )
+    monkeypatch.setitem(sys.modules, "mlx_whisper", fake_mlx)
+    monkeypatch.setattr(
+        "ytstock.transcripts._download_audio", lambda vid, tmp, proxy="": tmp_path / "a.m4a"
+    )
+    r = MlxWhisperProvider().fetch("v")
+    assert r.text == "你好 世界" and r.language == "zh" and r.source == "whisper"
+
+
+def test_service_from_settings_picks_backend(settings, monkeypatch):
+    from ytstock.transcripts import MlxWhisperProvider, TranscriptService, WhisperProvider
+
+    s = settings.model_copy(update={"whisper_fallback": True, "whisper_backend": "mlx"})
+    assert isinstance(TranscriptService.from_settings(s)._providers[1], MlxWhisperProvider)
+    s = settings.model_copy(update={"whisper_fallback": True, "whisper_backend": "faster"})
+    assert isinstance(TranscriptService.from_settings(s)._providers[1], WhisperProvider)
+    monkeypatch.setattr("ytstock.transcripts._mlx_available", lambda: False)
+    s = settings.model_copy(update={"whisper_fallback": True, "whisper_backend": "auto"})
+    assert isinstance(TranscriptService.from_settings(s)._providers[1], WhisperProvider)
+    assert len(TranscriptService.from_settings(settings)._providers) == 1

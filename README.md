@@ -59,9 +59,21 @@ and `ANTHROPIC_API_KEY` is unset. Set `LLM_BACKEND=api` / `claude-cli` to force 
 
 YouTube blocks caption requests from most datacenter IPs. Locally this is rarely
 an issue; in GitHub Actions or on a VPS set `YT_PROXY_URL` (any HTTP proxy) or the
-`WEBSHARE_PROXY_USERNAME` / `WEBSHARE_PROXY_PASSWORD` pair. As a last resort,
-`WHISPER_FALLBACK=true` with `uv sync --extra whisper` (needs `ffmpeg`) transcribes
-audio locally.
+`WEBSHARE_PROXY_USERNAME` / `WEBSHARE_PROXY_PASSWORD` pair.
+
+### Videos without captions (Whisper fallback)
+
+Many creator videos, especially Chinese-language ones, have no captions at all.
+Set `WHISPER_FALLBACK=true` and the pipeline downloads the audio with yt-dlp and
+transcribes it locally (needs `ffmpeg`). Two backends:
+
+| Backend | Install | Speed / quality (M2 Max, 23-min Chinese video) |
+|---|---|---|
+| `mlx` (Apple Silicon GPU, default when importable) | `uv sync --extra mlx` | `large-v3-turbo`: 66 s, finance terms correct |
+| `faster` (CPU, any platform) | `uv sync --extra whisper` | `small`: 4.6 min, frequent homophone errors on jargon |
+
+Captions in other languages are kept in the original language (Claude reads them
+natively); `REPORT_LANGUAGE` controls the language of the written output.
 
 ## Pipeline
 

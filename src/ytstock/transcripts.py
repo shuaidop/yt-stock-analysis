@@ -121,8 +121,28 @@ class CaptionProvider:
             raise TranscriptTransientError(str(exc)) from exc
 
 
+def _download_audio(video_id: str, tmp: str, proxy_url: str = "") -> Path:
+    import yt_dlp  # lazy: optional at import time
+
+    opts: dict = {
+        "format": "bestaudio/best",
+        "outtmpl": str(Path(tmp) / "%(id)s.%(ext)s"),
+        "quiet": True,
+        "noprogress": True,
+        "postprocessors": [{"key": "FFmpegExtractAudio", "preferredcodec": "m4a"}],
+    }
+    if proxy_url:
+        opts["proxy"] = proxy_url
+    with yt_dlp.YoutubeDL(opts) as ydl:
+        ydl.download([f"https://www.youtube.com/watch?v={video_id}"])
+    audio = next(Path(tmp).glob(f"{video_id}.*"), None)
+    if audio is None:
+        raise TranscriptUnavailable("yt-dlp produced no audio file")
+    return audio
+
+
 class WhisperProvider:
-    """yt-dlp + faster-whisper. Heavy; only used when explicitly enabled."""
+    """yt-dlp + faster-whisper (CPU, any platform). Only used when explicitly enabled."""
 
     def __init__(self, model_name: str = "small", proxy_url: str = "", beam_size: int = 1) -> None:
         self._model_name = model_name
@@ -138,46 +158,60 @@ class WhisperProvider:
         return self._model
 
     def fetch(self, video_id: str) -> TranscriptResult:
-        import yt_dlp  # lazy: optional extra
-
         with tempfile.TemporaryDirectory(prefix="ytstock-") as tmp:
-            outtmpl = str(Path(tmp) / "%(id)s.%(ext)s")
-            opts = {
-                "format": "bestaudio/best",
-                "outtmpl": outtmpl,
-                "quiet": True,
-                "noprogress": True,
-                "postprocessors": [
-                    {"key": "FFmpegExtractAudio", "preferredcodec": "m4a"},
-                ],
-            }
-            if self._proxy_url:
-                opts["proxy"] = self._proxy_url
-            with yt_dlp.YoutubeDL(opts) as ydl:
-                ydl.download([f"https://www.youtube.com/watch?v={video_id}"])
-            audio = next(Path(tmp).glob(f"{video_id}.*"), None)
-            if audio is None:
-                raise TranscriptUnavailable("yt-dlp produced no audio file")
-            log.info("whisper.start", video_id=video_id, model=self._model_name)
+            audio = _download_audio(video_id, tmp, self._proxy_url)
+            log.info("whisper.start", video_id=video_id, model=self._model_name, backend="faster")
             segments, info = self._load().transcribe(
                 str(audio), vad_filter=True, beam_size=self._beam_size
             )
             text = " ".join(seg.text.strip() for seg in segments)
-            log.info(
-                "whisper.done",
-                video_id=video_id,
-                language=getattr(info, "language", None),
-                chars=len(text),
-            )
+            language = getattr(info, "language", None) or "und"
+        log.info("whisper.done", video_id=video_id, language=language, chars=len(text))
         if not text.strip():
             raise TranscriptUnavailable("whisper produced empty transcript")
         return TranscriptResult(
-            video_id=video_id,
-            text=text,
-            language=getattr(info, "language", "en") or "en",
-            source="whisper",
-            is_generated=True,
+            video_id=video_id, text=text, language=language, source="whisper", is_generated=True
         )
+
+
+class MlxWhisperProvider:
+    """yt-dlp + mlx-whisper on Apple Silicon GPU. Much faster and more accurate than CPU
+    faster-whisper for the same wall-clock; requires the `mlx` extra (macOS arm64 only)."""
+
+    def __init__(
+        self, model_repo: str = "mlx-community/whisper-large-v3-turbo", proxy_url: str = ""
+    ) -> None:
+        self._repo = model_repo
+        self._proxy_url = proxy_url
+
+    def fetch(self, video_id: str) -> TranscriptResult:
+        import mlx_whisper  # lazy: optional extra
+
+        with tempfile.TemporaryDirectory(prefix="ytstock-") as tmp:
+            audio = _download_audio(video_id, tmp, self._proxy_url)
+            log.info("whisper.start", video_id=video_id, model=self._repo, backend="mlx")
+            result = mlx_whisper.transcribe(str(audio), path_or_hf_repo=self._repo)
+        text = (
+            " ".join(
+                seg.get("text", "").strip() for seg in result.get("segments", []) if seg.get("text")
+            )
+            or str(result.get("text", "")).strip()
+        )
+        language = str(result.get("language") or "und")
+        log.info("whisper.done", video_id=video_id, language=language, chars=len(text))
+        if not text.strip():
+            raise TranscriptUnavailable("mlx-whisper produced empty transcript")
+        return TranscriptResult(
+            video_id=video_id, text=text, language=language, source="whisper", is_generated=True
+        )
+
+
+def _mlx_available() -> bool:
+    try:
+        import mlx_whisper  # noqa: F401
+    except Exception:
+        return False
+    return True
 
 
 class TranscriptService:
@@ -194,11 +228,19 @@ class TranscriptService:
             CaptionProvider(settings.transcript_languages, build_proxy_config(settings))
         ]
         if settings.whisper_fallback:
-            providers.append(
-                WhisperProvider(
-                    settings.whisper_model, settings.yt_proxy_url, settings.whisper_beam_size
+            backend = settings.whisper_backend
+            if backend == "auto":
+                backend = "mlx" if _mlx_available() else "faster"
+            if backend == "mlx":
+                providers.append(
+                    MlxWhisperProvider(settings.whisper_mlx_model, settings.yt_proxy_url)
                 )
-            )
+            else:
+                providers.append(
+                    WhisperProvider(
+                        settings.whisper_model, settings.yt_proxy_url, settings.whisper_beam_size
+                    )
+                )
         return cls(providers)
 
     def fetch(self, video_id: str) -> TranscriptResult:
