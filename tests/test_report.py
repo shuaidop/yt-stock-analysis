@@ -39,8 +39,9 @@ def test_render_daily_markdown_and_json(tmp_path):
     payload = build_json(date(2026, 9, 2), [v1, v2], analyses, stats, syn, cost_usd=1.234)
     assert payload["videos"][1]["analysis"] is None and payload["synthesis"]["headline"]
     path = write_report(tmp_path / "r", date(2026, 9, 2), md, payload)
-    assert path.exists() and (tmp_path / "r" / "latest.md").read_text() == md
-    assert (tmp_path / "r" / "2026-09-02.json").exists()
+    assert path == tmp_path / "r" / "2026" / "2026-09-02" / "digest.md"
+    assert (tmp_path / "r" / "latest-digest.md").read_text() == md
+    assert (path.parent / "digest.json").exists()
 
 
 def test_render_brief_markdown(tmp_path):
@@ -55,7 +56,7 @@ def test_render_brief_markdown(tmp_path):
     for needle in (
         "# Trading brief — 2026-09-02",
         "### Hidden logic / second-order ideas",
-        "#### 1. NVDA pre-Fed drift (NVDA, long via stock)",
+        "#### 1. NVDA pre-Fed drift (NVDA, long / stock)",
         "**Invalidation:** Close below 175.",
         "### Watch list (next few days)",
         "❌ contradicted",
@@ -70,7 +71,21 @@ def test_render_brief_markdown(tmp_path):
     assert payload["brief"]["trade_ideas"][0]["ticker"] == "NVDA"
     assert payload["videos"][0]["fact_check"]["reliability_score"] == 3
     path = write_brief(tmp_path / "r", date(2026, 9, 2), md, payload)
-    assert path.name == "brief-2026-09-02.md" and (tmp_path / "r" / "latest-brief.md").exists()
+    assert path == tmp_path / "r" / "2026" / "2026-09-02" / "brief.md"
+    assert (tmp_path / "r" / "latest-brief.md").exists()
+
+
+def test_chinese_template():
+    v = make_video()
+    a = normalize_analysis(VideoAnalysis.model_validate(ANALYSIS_DICT))
+    brief = TradingBrief.model_validate(BRIEF_DICT)
+    md = render_brief_markdown(
+        date(2026, 9, 2), [v], {v.video_id: a}, {}, [], brief, language="Chinese (Simplified)"
+    )
+    assert md.startswith("# 交易简报 — 2026-09-02")
+    assert "### 交易想法" in md and "观察清单" in md and "▲ 看多" in md
+    md_en = render_markdown(date(2026, 9, 2), [v], {v.video_id: a}, [], None, language="English")
+    assert md_en.startswith("# Stock-market YouTube digest")
 
 
 def test_brief_without_result_still_renders():

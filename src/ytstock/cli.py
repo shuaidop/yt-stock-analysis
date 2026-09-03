@@ -208,6 +208,21 @@ def status(date_: DateOpt = None) -> None:
         typer.echo(f"  {r.started_at:%H:%M:%S}  {r.stage:<10} {r.status:<7} {r.detail or ''}")
 
 
+@app.command()
+def prune(
+    transcript_days: Annotated[
+        int, typer.Option(help="Drop transcript text for videos older than N days (0 = skip).")
+    ] = 30,
+    json_days: Annotated[
+        int, typer.Option(help="Delete per-day report JSON older than N days (0 = skip).")
+    ] = 0,
+) -> None:
+    """Free disk: old transcript text, old report JSON, leftover Whisper temp dirs."""
+    _, pipeline = _bootstrap()
+    out = pipeline.prune(transcript_days=transcript_days, json_days=json_days)
+    typer.echo(json.dumps(out))
+
+
 @app.command("init-db")
 def init_db_cmd() -> None:
     """Create tables (safe to run repeatedly)."""

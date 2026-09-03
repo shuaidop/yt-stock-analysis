@@ -12,10 +12,11 @@ recorded and surfaced in the report and the ``RunSummary``.
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import date
+from datetime import date, timedelta
+from pathlib import Path
 from typing import Any
 
-from sqlalchemy import select, true
+from sqlalchemy import select, text, true, update
 
 from ytstock.analysis import (
     BRIEF_PROMPT_VERSION,
@@ -402,7 +403,14 @@ class Pipeline:
                 day_cost += outcome.usage.cost_usd
 
             markdown = render_markdown(
-                target_date, metas, analyses, stats, synthesis, failures=failures, cost_usd=day_cost
+                target_date,
+                metas,
+                analyses,
+                stats,
+                synthesis,
+                failures=failures,
+                cost_usd=day_cost,
+                language=self.settings.report_language,
             )
             payload = build_json(
                 target_date, metas, analyses, stats, synthesis, failures=failures, cost_usd=day_cost
@@ -444,8 +452,14 @@ class Pipeline:
         summary.transcribed, summary.transcript_failures = self.transcribe(target_date)
         summary.analyzed, summary.analysis_failures = self.analyze(target_date)
         summary.report_path, summary.total_cost_usd = self.report(target_date)
+        self._auto_prune()
         log.info("run.complete", **summary.model_dump(mode="json"))
         return summary
+
+    def _auto_prune(self) -> None:
+        s = self.settings
+        if s.transcript_retention_days > 0 or s.report_json_retention_days > 0:
+            self.prune()
 
     # =====================================================================
     # Brief mode: explicit URLs -> transcripts -> analysis -> fact check -> brief
@@ -635,6 +649,7 @@ class Pipeline:
                 brief_result,
                 failures=failures,
                 cost_usd=cost,
+                language=self.settings.report_language,
             )
             payload = build_brief_json(
                 target_date,
@@ -691,5 +706,82 @@ class Pipeline:
         if fact_check:
             self.fact_check(target_date, video_ids=ids)
         summary.report_path, summary.total_cost_usd = self.brief(target_date, video_ids=ids)
+        self._auto_prune()
         log.info("brief.complete", **summary.model_dump(mode="json"))
         return summary
+
+    # =====================================================================
+    # Housekeeping
+    # =====================================================================
+    def prune(
+        self,
+        *,
+        transcript_days: int | None = None,
+        json_days: int | None = None,
+        today: date | None = None,
+    ) -> dict[str, int]:
+        """Drop bulky data we no longer need. Analyses, fact checks and reports are kept.
+
+        - transcript text for videos older than ``transcript_days`` (row stays, status 'pruned')
+        - per-day report JSON files older than ``json_days`` (markdown is kept)
+        - leftover ``ytstock-*`` temp dirs from interrupted Whisper runs
+        """
+        import shutil
+        import tempfile
+
+        today = today or date.today()
+        t_days = (
+            self.settings.transcript_retention_days if transcript_days is None else transcript_days
+        )
+        j_days = self.settings.report_json_retention_days if json_days is None else json_days
+        out = {"transcripts_pruned": 0, "json_deleted": 0, "temp_dirs_removed": 0, "bytes_freed": 0}
+
+        if t_days > 0:
+            cutoff = today - timedelta(days=t_days)
+            with self.db.session() as s:
+                ids = s.scalars(
+                    select(Video.video_id).where(
+                        Video.target_date < cutoff,
+                        Video.video_id.in_(
+                            select(Transcript.video_id).where(Transcript.status == "ok")
+                        ),
+                    )
+                ).all()
+                if ids:
+                    freed = s.scalar(
+                        select(text("coalesce(sum(length(text)),0)"))
+                        .select_from(Transcript)
+                        .where(Transcript.video_id.in_(ids))
+                    )
+                    s.execute(
+                        update(Transcript)
+                        .where(Transcript.video_id.in_(ids))
+                        .values(text="", status="pruned")
+                    )
+                    out["transcripts_pruned"] = len(ids)
+                    out["bytes_freed"] += int(freed or 0)
+            if ids and self.db.engine.dialect.name == "sqlite":
+                with self.db.engine.connect() as conn:
+                    conn.exec_driver_sql("VACUUM")
+
+        if j_days > 0:
+            cutoff = today - timedelta(days=j_days)
+            for path in self.settings.reports_dir.glob("*/*/*.json"):
+                try:
+                    day = date.fromisoformat(path.parent.name)
+                except ValueError:
+                    continue
+                if day < cutoff:
+                    out["bytes_freed"] += path.stat().st_size
+                    path.unlink()
+                    out["json_deleted"] += 1
+
+        for tmp in Path(tempfile.gettempdir()).glob("ytstock-*"):
+            if tmp.is_dir():
+                size = sum(f.stat().st_size for f in tmp.rglob("*") if f.is_file())
+                shutil.rmtree(tmp, ignore_errors=True)
+                out["temp_dirs_removed"] += 1
+                out["bytes_freed"] += size
+
+        log.info("prune.done", **out)
+        return out

@@ -60,11 +60,11 @@ def test_run_all_end_to_end_and_idempotent(settings, db):
     assert summary.discovered == 2
     assert summary.transcribed == 2 and summary.transcript_failures == 0
     assert summary.analyzed == 2 and summary.analysis_failures == 0
-    assert summary.report_path.endswith("2026-09-02.md")
+    assert summary.report_path.endswith("2026/2026-09-02/digest.md")
     assert summary.total_cost_usd > 0
     # 2 video analyses + 1 synthesis
     assert len(client.calls) == 3
-    md = (settings.reports_dir / "2026-09-02.md").read_text()
+    md = Path(summary.report_path).read_text()
     assert "Stock market recap" in md and "Creators lean bullish" in md
 
     with db.session() as s:
@@ -149,7 +149,7 @@ def test_run_brief_from_urls(settings, db, monkeypatch):
     ]
     summary = p.run_brief(urls, TARGET)
     assert summary.discovered == 2 and summary.analyzed == 2
-    assert summary.report_path.endswith("brief-2026-09-02.md")
+    assert summary.report_path.endswith("2026/2026-09-02/brief.md")
     # 2 analyses + 2 fact checks + 1 brief
     formats = [c["output_format"].__name__ for c in client.calls]
     assert formats.count("VideoAnalysis") == 2
@@ -177,3 +177,25 @@ def test_run_brief_without_factcheck(settings, db, monkeypatch):
     )
     p.run_brief(["CCCCCCCCCCC"], TARGET, fact_check=False)
     assert "FactCheckReport" not in [c["output_format"].__name__ for c in client.calls]
+
+
+def test_prune_drops_old_transcripts_and_json(settings, db, tmp_path):
+    from datetime import timedelta
+
+    p = _pipeline(settings, db)
+    p.run_all(TARGET)
+    # make one report json look old
+    old_dir = settings.reports_dir / "2026" / "2026-07-01"
+    old_dir.mkdir(parents=True)
+    (old_dir / "digest.json").write_text("{}")
+    (old_dir / "digest.md").write_text("# keep me")
+
+    out = p.prune(transcript_days=10, json_days=30, today=TARGET + timedelta(days=20))
+    assert out["transcripts_pruned"] == 2 and out["json_deleted"] == 1
+    assert (old_dir / "digest.md").exists()
+    with db.session() as s:
+        rows = s.scalars(select(Transcript)).all()
+    assert all(t.status == "pruned" and t.text == "" for t in rows)
+    # analyses survive; report still renders from stored analyses
+    path, _ = p.report(TARGET, synthesize=False)
+    assert "Stock market recap" in Path(path).read_text()

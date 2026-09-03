@@ -52,7 +52,7 @@ src = ["src", "tests"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP", "SIM", "RUF"]
-ignore = ["B008"]  # typer.Option in defaults
+ignore = ["B008", "RUF001"]  # typer.Option in defaults; full-width CJK punctuation is intentional
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

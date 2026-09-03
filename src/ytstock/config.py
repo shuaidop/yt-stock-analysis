@@ -113,6 +113,14 @@ class Settings(BaseSettings):
         description="Hard ceiling before a transcript is rejected rather than silently cut.",
     )
     analysis_concurrency: int = 3
+    transcript_retention_days: int = Field(
+        default=0,
+        description="If > 0, `ytstock run`/`brief` drop transcript text (not analyses) for videos "
+        "older than this many days at the end of each run. 0 = keep forever.",
+    )
+    report_json_retention_days: int = Field(
+        default=0, description="If > 0, delete per-day report JSON files older than this."
+    )
 
     # --- Observability -----------------------------------------------------
     log_level: str = "INFO"

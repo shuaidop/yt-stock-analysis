@@ -220,4 +220,4 @@ __marimo__/
 # ytstock
 data/
 .env
-reports/*.json
+reports/**/*.json
