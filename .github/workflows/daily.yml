@@ -1,0 +1,80 @@
+name: Daily digest
+# Runs after the US close so end-of-day recap videos are up.
+# Needs repo secrets: YOUTUBE_API_KEY, ANTHROPIC_API_KEY, and (strongly recommended,
+# GitHub runners are blocked by YouTube for captions) YT_PROXY_URL or the WEBSHARE_* pair.
+on:
+  schedule:
+    - cron: "30 3 * * 2-6"   # 03:30 UTC Tue-Sat = 23:30 ET Mon-Fri
+  workflow_dispatch:
+    inputs:
+      date:
+        description: "Target trading day (YYYY-MM-DD); blank = default"
+        required: false
+      top:
+        description: "Number of videos"
+        required: false
+        default: "10"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: daily-digest
+  cancel-in-progress: false
+
+jobs:
+  digest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      YT_PROXY_URL: ${{ secrets.YT_PROXY_URL }}
+      WEBSHARE_PROXY_USERNAME: ${{ secrets.WEBSHARE_PROXY_USERNAME }}
+      WEBSHARE_PROXY_PASSWORD: ${{ secrets.WEBSHARE_PROXY_PASSWORD }}
+      DATABASE_URL: sqlite:///data/ytstock.db
+      LOG_FORMAT: json
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - run: uv sync --no-dev
+
+      - name: Restore database
+        uses: actions/cache/restore@v4
+        with:
+          path: data
+          key: ytstock-db-${{ github.run_id }}
+          restore-keys: ytstock-db-
+
+      - name: Run pipeline
+        run: |
+          ARGS=""
+          if [ -n "${{ github.event.inputs.date }}" ]; then ARGS="$ARGS --date ${{ github.event.inputs.date }}"; fi
+          if [ -n "${{ github.event.inputs.top }}" ]; then ARGS="$ARGS --top ${{ github.event.inputs.top }}"; fi
+          uv run ytstock run $ARGS
+
+      - name: Save database
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: data
+          key: ytstock-db-${{ github.run_id }}
+
+      - name: Commit report
+        if: success()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add reports
+          git diff --cached --quiet || git commit -m "report: $(date -u +%F)"
+          git push
+
+      - name: Upload report artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: report-${{ github.run_id }}
+          path: reports
+          if-no-files-found: ignore

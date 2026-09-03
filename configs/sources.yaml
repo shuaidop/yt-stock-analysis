@@ -1,0 +1,53 @@
+# Where the pipeline looks for candidate videos each day.
+#
+# search_queries: each costs 200 YouTube quota units per run (two duration buckets).
+# channels: 'UC...' ids or '@handles'; costs ~1-2 units each. These are checked
+#   regardless of search ranking, so put the daily-recap creators you care about here.
+# title_keywords: at least one must appear (case-insensitive) in the title for a
+#   search result to be kept. Channel-watchlist videos bypass this filter.
+# exclude_keywords: any match drops the video.
+
+search_queries:
+  - "stock market today"
+  - "stock market recap"
+  - "market close today"
+  - "premarket stocks today"
+  - "S&P 500 analysis today"
+  - "stock market news"
+
+channels:
+  - "@CNBCTelevision"
+  - "@YahooFinance"
+  - "@Bloomberg"
+  - "@GrahamStephan"
+  - "@MeetKevin"
+  - "@ZipTrader"
+  - "@stockmoe"
+  - "@FinancialEducation"
+  - "@JosephCarlsonShow"
+
+title_keywords:
+  - "stock"
+  - "market"
+  - "s&p"
+  - "nasdaq"
+  - "dow"
+  - "premarket"
+  - "earnings"
+  - "fed"
+  - "rally"
+  - "sell-off"
+  - "selloff"
+  - "crash"
+
+exclude_keywords:
+  - "nifty"
+  - "sensex"
+  - "zee business"
+  - "share market"
+  - "xauusd"
+  - "crypto"
+  - "bitcoin"
+  - "forex"
+  - "#shorts"
+  - "giveaway"
