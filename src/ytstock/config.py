@@ -102,7 +102,7 @@ class Settings(BaseSettings):
     factcheck_max_searches: int = 12
     brief_max_searches: int = 10
     claude_max_tokens: int = 16000
-    claude_timeout_seconds: float = 600.0
+    claude_timeout_seconds: float = 1800.0
     claude_fallbacks: bool = Field(
         default=True,
         description="Enable server-side refusal fallbacks (beta) so a safety decline "
