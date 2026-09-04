@@ -96,11 +96,31 @@ Outputs land in `reports/` (`YYYY-MM-DD.md/.json`, `brief-YYYY-MM-DD.md/.json`,
 `latest.md`, `latest-brief.md`). All raw results, token usage, and cost per call
 are in the SQLite database (`data/ytstock.db`; set `DATABASE_URL` for Postgres).
 
+## Portfolio-aware briefs (IBKR)
+
+Brief mode can size its recommendations to your actual account. Two ways to feed it:
+
+| Source | How | Notes |
+|---|---|---|
+| IBKR TWS / IB Gateway | `uv sync --extra ibkr`, enable the API in TWS, set `IBKR_ENABLED=true` (`IBKR_PORT` 7496 live / 7497 paper / 4001-4002 Gateway) | Read-only connection; snapshot is also written to `data/portfolio.json` |
+| JSON snapshot | `ytstock portfolio-import summary.json positions.json orders.json` (the raw JSON from the IBKR connector's account tools) | No TWS needed; refresh whenever positions change |
+
+`ytstock portfolio` prints what the brief will see. Live quotes for every ticker in the
+portfolio, every ticker the videos mention, and SPY/QQQ/IWM/TLT/GLD/XLE/VIX/10y come from
+Yahoo Finance (`ytstock quotes SPY AVGO ^VIX`); IBKR quotes are used when TWS is connected.
+The brief then adds a "Your portfolio" section: concentration and hedge assessment plus
+position-level actions (hold / add / trim / exit / hedge / roll / adjust order) with size,
+trigger and risk note. `--no-portfolio` disables all of this. The pipeline never places
+orders.
+
 ## CLI
 
 ```
 ytstock run        [--date D] [--top N] [--skip-discovery]     full daily pipeline
-ytstock brief URL… [--date D] [--no-factcheck] [--include-daily]
+ytstock brief URL… [--date D] [--no-factcheck] [--include-daily] [--no-portfolio]
+ytstock brief-render [--date D]   re-render from stored results (no model calls)
+ytstock portfolio | portfolio-import SUMMARY POSITIONS [ORDERS] | quotes SYM…
+ytstock prune [--transcript-days N] [--json-days N]
 ytstock discover | transcribe | analyze [--force] | factcheck [--force] | report [--no-synthesis]
 ytstock status [--date D]        per-stage counts, cost, recent stage runs
 ytstock show VIDEO_ID            stored analysis JSON for one video
