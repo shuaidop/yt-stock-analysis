@@ -150,6 +150,11 @@ def _arrow(lang: str, sentiment: str) -> str:
     return table.get(sentiment, sentiment)
 
 
+def _unescape(text: str) -> str:
+    """Models occasionally emit literal backslash-n inside JSON strings; render as newlines."""
+    return text.replace("\\n", "\n")
+
+
 def _fmt_views(n: int) -> str:
     if n >= 1_000_000:
         return f"{n / 1_000_000:.1f}M"
@@ -260,7 +265,7 @@ def render_markdown(
         lines.append("")
 
     lines += ["---", f"_{T['footer_digest']}_"]
-    return "\n".join(lines) + "\n"
+    return _unescape("\n".join(lines)) + "\n"
 
 
 def build_json(
@@ -476,7 +481,7 @@ def render_brief_markdown(
         L.append("")
 
     L += ["---", f"_{T['footer_brief']}_"]
-    return "\n".join(L) + "\n"
+    return _unescape("\n".join(L)) + "\n"
 
 
 def build_brief_json(

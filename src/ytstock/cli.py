@@ -148,6 +148,14 @@ def brief(
         raise typer.Exit(code=2)
 
 
+@app.command("brief-render")
+def brief_render(date_: DateOpt = None) -> None:
+    """Re-render the day's brief from stored results (no model calls)."""
+    settings, pipeline = _bootstrap()
+    path, _ = pipeline.brief(_parse_date(date_, settings), regenerate=False)
+    typer.echo(f"wrote {path}")
+
+
 @app.command()
 def factcheck(
     date_: DateOpt = None,

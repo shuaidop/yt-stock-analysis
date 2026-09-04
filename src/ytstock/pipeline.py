@@ -585,8 +585,17 @@ class Pipeline:
             run.detail.update(pending=len(todo), ok=ok, failed=failed)
         return ok, failed
 
-    def brief(self, target_date: date, *, video_ids: list[str] | None = None) -> tuple[str, float]:
-        """Assemble analyses + fact checks, generate the trading brief, write files."""
+    def brief(
+        self,
+        target_date: date,
+        *,
+        video_ids: list[str] | None = None,
+        regenerate: bool = True,
+    ) -> tuple[str, float]:
+        """Assemble analyses + fact checks, generate the trading brief, write files.
+
+        ``regenerate=False`` re-renders from the last stored brief (template changes,
+        language switch) without calling the model."""
         with _StageRun(self.db, target_date, "brief") as run:
             videos = [
                 v
@@ -629,7 +638,22 @@ class Pipeline:
             stats = compute_ticker_stats(analyses)
             brief_result: TradingBrief | None = None
             status, error = "skipped", "no successful analyses"
-            if analyses:
+            if analyses and not regenerate:
+                with self.db.session() as s:
+                    prev = s.scalars(
+                        select(Brief)
+                        .where(Brief.target_date == target_date, Brief.status == "ok")
+                        .order_by(Brief.created_at.desc())
+                    ).first()
+                if prev is not None and prev.result:
+                    brief_result = TradingBrief.model_validate(prev.result)
+                    status, error = "ok", ""
+                    cost += (
+                        prev.cost_usd
+                        - sum(a.cost_usd for a in analysis_rows.values())
+                        - sum(f.cost_usd for f in fc_rows.values())
+                    )
+            elif analyses:
                 outcome = self.analyzer.trading_brief(
                     target_date.isoformat(), metas, analyses, fact_checks, stats
                 )
