@@ -199,3 +199,25 @@ def test_prune_drops_old_transcripts_and_json(settings, db, tmp_path):
     # analyses survive; report still renders from stored analyses
     path, _ = p.report(TARGET, synthesize=False)
     assert "Stock market recap" in Path(path).read_text()
+
+
+def test_brief_receives_portfolio_context(settings, db, monkeypatch, tmp_path):
+    from ytstock.portfolio import portfolio_from_ibkr_connector, save_portfolio_file
+
+    from .test_portfolio import ORDERS, POSITIONS, SUMMARY
+
+    save_portfolio_file(
+        tmp_path / "pf.json", portfolio_from_ibkr_connector(SUMMARY, POSITIONS, ORDERS)
+    )
+    settings = settings.model_copy(update={"portfolio_file": tmp_path / "pf.json"})
+    monkeypatch.setattr("ytstock.portfolio.fetch_quotes", lambda syms, **kw: {})
+    client = FakeClaudeClient()
+    p = _pipeline(settings, db, client=client)
+    monkeypatch.setattr(
+        "ytstock.pipeline.fetch_metadata_for_ids", lambda ids, key: [make_video(v) for v in ids]
+    )
+    summary = p.run_brief(["DDDDDDDDDDD"], TARGET, fact_check=False)
+    brief_call = next(c for c in client.calls if c["output_format"].__name__ == "TradingBrief")
+    assert "<portfolio>" in brief_call["messages"][0]["content"]
+    md = Path(summary.report_path).read_text()
+    assert "56% in two AI hardware names" in md and "| CRWV | hedge |" in md

@@ -180,6 +180,17 @@ BRIEF_DICT: dict[str, Any] = {
     "creator_reliability": "Test Channel: 3/5.",
     "disagreements": ["Creators vs. BLS on CPI."],
     "risks_and_caveats": ["Small sample of videos."],
+    "portfolio_assessment": "56% in two AI hardware names, no index hedge.",
+    "portfolio_actions": [
+        {
+            "symbol": "CRWV",
+            "action": "hedge",
+            "size": "5 x Oct 75 puts",
+            "rationale": "38% weight, beta > 2, unhedged into NFP.",
+            "trigger": "now",
+            "risk_note": "Premium decays if the stock rallies.",
+        }
+    ],
 }
 
 

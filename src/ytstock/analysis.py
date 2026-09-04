@@ -427,6 +427,12 @@ or a search result.
 break, a scheduled speaker, an options expiry).
 - Write for a professional: dense, quantitative, no filler, no generic disclaimers in the \
 body (a caveats list is provided for that).
+- If <quotes> are provided, they are the authoritative current prices: use them for every \
+level you cite and prefer them over prices mentioned in the videos.
+- If a <portfolio> is provided, add position-level actions sized to that account: respect \
+its cash and existing open orders, flag concentration and unhedged high-beta exposure, \
+express hedges as concrete instruments/strikes/quantities, and never recommend more than \
+the account can fund. If no portfolio is provided, say so and return no actions.
 - Write in {language}."""
 
 
@@ -586,8 +592,13 @@ class GroundedAnalyzer(ClaudeAnalyzer):
         analyses: dict[str, VideoAnalysis],
         fact_checks: dict[str, FactCheckReport],
         stats: list[TickerStats],
+        *,
+        extra_context: str = "",
     ) -> str:
-        blocks = [f"<today>{today}</today>", "<ticker_stats>"]
+        blocks = [f"<today>{today}</today>"]
+        if extra_context:
+            blocks.append(extra_context)
+        blocks.append("<ticker_stats>")
         for st in stats[:30]:
             blocks.append(
                 f"{st.ticker}: mentions={st.mentions} bullish={st.bullish} "
@@ -622,10 +633,14 @@ class GroundedAnalyzer(ClaudeAnalyzer):
         analyses: dict[str, VideoAnalysis],
         fact_checks: dict[str, FactCheckReport],
         stats: list[TickerStats],
+        *,
+        extra_context: str = "",
     ) -> ToolOutcome:
         outcome = self._grounded(
             system=self._prompts["brief"],
-            user=self.build_brief_prompt(today, videos, analyses, fact_checks, stats),
+            user=self.build_brief_prompt(
+                today, videos, analyses, fact_checks, stats, extra_context=extra_context
+            ),
             output_format=TradingBrief,
             effort=self._settings.claude_brief_effort,
             max_uses=self._settings.brief_max_searches,

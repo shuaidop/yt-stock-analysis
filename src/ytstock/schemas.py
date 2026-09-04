@@ -234,6 +234,15 @@ class WatchItem(BaseModel):
     tickers: list[str]
 
 
+class PortfolioAction(BaseModel):
+    symbol: str
+    action: Literal["hold", "add", "trim", "exit", "hedge", "roll", "adjust_order"]
+    size: str = Field(description="Concrete size: shares/contracts or % of net liquidation.")
+    rationale: str = Field(description="Why, tied to the evidence and the position's weight/P&L.")
+    trigger: str = Field(description="Price/event condition to act on, or 'now'.")
+    risk_note: str
+
+
 class TradingBrief(BaseModel):
     headline: str
     executive_summary: str = Field(description="One paragraph a PM can read in 30 seconds.")
@@ -260,3 +269,10 @@ class TradingBrief(BaseModel):
     )
     disagreements: list[str] = Field(description="Where creators or the evidence conflict.")
     risks_and_caveats: list[str]
+    portfolio_assessment: str = Field(
+        description="If a portfolio was provided: concentration, beta, hedges, cash, and how "
+        "exposed it is to the scenarios above. Otherwise 'no portfolio provided'."
+    )
+    portfolio_actions: list[PortfolioAction] = Field(
+        description="Position-level actions sized to the provided portfolio; empty if none."
+    )

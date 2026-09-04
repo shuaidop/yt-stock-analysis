@@ -136,9 +136,15 @@ def brief(
     include_daily: Annotated[
         bool, typer.Option(help="Also include videos already discovered for the date.")
     ] = False,
+    no_portfolio: Annotated[
+        bool, typer.Option("--no-portfolio", help="Do not feed portfolio/quotes into the brief.")
+    ] = False,
 ) -> None:
     """Analyse specific videos end-to-end and write a fact-checked trading brief."""
     settings, pipeline = _bootstrap()
+    if no_portfolio:
+        settings.brief_include_portfolio = False
+        settings.quotes_enabled = False
     target = _parse_date(date_, settings)
     summary = pipeline.run_brief(
         urls, target, fact_check=not no_factcheck, include_daily=include_daily
@@ -146,6 +152,53 @@ def brief(
     typer.echo(json.dumps(summary.model_dump(mode="json"), indent=2))
     if summary.analyzed == 0 and not _has_ok_analyses(pipeline, target):
         raise typer.Exit(code=2)
+
+
+@app.command()
+def portfolio() -> None:
+    """Show the portfolio the brief will use (TWS if enabled, else the JSON snapshot)."""
+    from ytstock.portfolio import load_portfolio, portfolio_context
+
+    settings, _ = _bootstrap()
+    p = load_portfolio(settings)
+    if p is None:
+        typer.echo(
+            f"no portfolio: enable IBKR_ENABLED or create {settings.portfolio_file}", err=True
+        )
+        raise typer.Exit(code=1)
+    typer.echo(portfolio_context(p))
+
+
+@app.command("portfolio-import")
+def portfolio_import(
+    summary: Annotated[Path, typer.Argument(help="JSON from get_account_summary")],
+    positions: Annotated[Path, typer.Argument(help="JSON from get_account_positions")],
+    orders: Annotated[Path | None, typer.Argument(help="JSON from get_account_orders")] = None,
+) -> None:
+    """Convert IBKR-connector JSON dumps into the portfolio snapshot file."""
+    from ytstock.portfolio import portfolio_from_ibkr_connector, save_portfolio_file
+
+    settings, _ = _bootstrap()
+    p = portfolio_from_ibkr_connector(
+        json.loads(summary.read_text()),
+        json.loads(positions.read_text()),
+        json.loads(orders.read_text()) if orders else None,
+    )
+    save_portfolio_file(settings.portfolio_file, p)
+    typer.echo(
+        f"wrote {settings.portfolio_file}: {len(p.holdings)} holdings, {len(p.orders)} orders"
+    )
+
+
+@app.command()
+def quotes(
+    symbols: Annotated[list[str], typer.Argument(help="Tickers, e.g. SPY AVGO ^VIX")],
+) -> None:
+    """Fetch current quotes (yfinance)."""
+    from ytstock.portfolio import fetch_quotes, quotes_context
+
+    _bootstrap()
+    typer.echo(quotes_context(fetch_quotes(symbols)) or "no quotes")
 
 
 @app.command("brief-render")

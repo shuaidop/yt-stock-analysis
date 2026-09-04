@@ -39,6 +39,7 @@ from ytstock.db import (
 )
 from ytstock.discovery import DiscoveryWindow, Sources, discover
 from ytstock.log import get_logger
+from ytstock.portfolio import build_context, portfolio_context, quotes_context
 from ytstock.report import (
     build_brief_json,
     build_json,
@@ -654,8 +655,25 @@ class Pipeline:
                         - sum(f.cost_usd for f in fc_rows.values())
                     )
             elif analyses:
+                mentioned = [st.ticker for st in stats[:25]]
+                try:
+                    portfolio, quotes = build_context(self.settings, mentioned)
+                except Exception as exc:
+                    log.warning("brief.context_failed", error=str(exc)[:200])
+                    portfolio, quotes = None, {}
+                extra = "\n".join(
+                    x for x in (portfolio_context(portfolio), quotes_context(quotes)) if x
+                )
+                run.detail.update(
+                    portfolio=portfolio.source if portfolio else None, quotes=len(quotes)
+                )
                 outcome = self.analyzer.trading_brief(
-                    target_date.isoformat(), metas, analyses, fact_checks, stats
+                    target_date.isoformat(),
+                    metas,
+                    analyses,
+                    fact_checks,
+                    stats,
+                    extra_context=extra,
                 )
                 status, error = outcome.status, outcome.error
                 cost += outcome.usage.cost_usd

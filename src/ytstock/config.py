@@ -122,6 +122,18 @@ class Settings(BaseSettings):
         default=0, description="If > 0, delete per-day report JSON files older than this."
     )
 
+    # --- Portfolio / quotes (brief mode) ------------------------------------
+    brief_include_portfolio: bool = True
+    portfolio_file: Path = Path("data/portfolio.json")
+    ibkr_enabled: bool = Field(
+        default=False, description="Pull positions live from TWS/IB Gateway (needs `ibkr` extra)."
+    )
+    ibkr_host: str = "127.0.0.1"
+    ibkr_port: int = 7497
+    ibkr_client_id: int = 17
+    quotes_enabled: bool = True
+    max_quote_symbols: int = 40
+
     # --- Observability -----------------------------------------------------
     log_level: str = "INFO"
     log_format: Literal["console", "json"] = "console"

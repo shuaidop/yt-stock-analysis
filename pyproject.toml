@@ -16,6 +16,7 @@ dependencies = [
     "structlog>=24.1",
     "tenacity>=8.3",
     "typer>=0.12",
+    "yfinance>=1.7.0",
     "youtube-transcript-api>=1.0",
     "yt-dlp>=2024.8",
 ]
@@ -23,6 +24,7 @@ dependencies = [
 [project.optional-dependencies]
 whisper = ["faster-whisper>=1.0"]
 mlx = ["mlx-whisper>=0.4"]
+ibkr = ["ib_async>=1.0"]
 postgres = ["psycopg[binary]>=3.1"]
 
 [project.scripts]

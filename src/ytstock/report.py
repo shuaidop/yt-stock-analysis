@@ -68,6 +68,8 @@ _STRINGS: dict[str, dict[str, str]] = {
         "source_reliability": "Source reliability",
         "disagreements": "Disagreements",
         "risks_caveats": "Risks and caveats",
+        "portfolio": "Your portfolio",
+        "pa_table": "| Symbol | Action | Size | Trigger | Rationale | Risk |",
         "mention_table": "| Ticker | Mentions | Bullish | Bearish | Neutral/Mixed | Net |",
         "mention_table_brief": "| Ticker | Mentions | Bullish | Bearish | Net |",
         "footer_digest": "Generated automatically from public YouTube transcripts. Views are "
@@ -125,6 +127,8 @@ _STRINGS: dict[str, dict[str, str]] = {
         "source_reliability": "来源可信度",
         "disagreements": "分歧",
         "risks_caveats": "风险与注意事项",
+        "portfolio": "你的持仓",
+        "pa_table": "| 标的 | 操作 | 规模 | 触发条件 | 理由 | 风险 |",
         "mention_table": "| 标的 | 提及 | 看多 | 看空 | 中性/分歧 | 净值 |",
         "mention_table_brief": "| 标的 | 提及 | 看多 | 看空 | 净值 |",
         "footer_digest": "本文由公开 YouTube 字幕自动生成，观点归属于各博主，不构成投资建议。",
@@ -385,6 +389,23 @@ def render_brief_markdown(
             for w in brief.watch_list:
                 L.append(f"| {w.when} | {w.what} | {w.why_it_matters} | {', '.join(w.tickers)} |")
             L.append("")
+        if brief.portfolio_actions or (
+            brief.portfolio_assessment and "no portfolio" not in brief.portfolio_assessment.lower()
+        ):
+            L += [f"### {T['portfolio']}", "", brief.portfolio_assessment, ""]
+            if brief.portfolio_actions:
+                L += [T["pa_table"], "|---|---|---|---|---|---|"]
+                for act in brief.portfolio_actions:
+                    cells = [
+                        act.symbol,
+                        act.action,
+                        act.size,
+                        act.trigger,
+                        act.rationale,
+                        act.risk_note,
+                    ]
+                    L.append("| " + " | ".join(c.replace("|", "\\|") for c in cells) + " |")
+                L.append("")
         L += [f"### {T['source_reliability']}", "", brief.creator_reliability, ""]
         if brief.disagreements:
             L += [f"### {T['disagreements']}", ""] + [f"- {d}" for d in brief.disagreements] + [""]
