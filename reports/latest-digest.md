@@ -1,4 +1,4 @@
-# Stock-market YouTube digest — 2026-11-17
+# Stock-market YouTube digest — 2026-11-18
 
 0 of 0 videos analysed · 0 combined views · est. cost $0.00
 
